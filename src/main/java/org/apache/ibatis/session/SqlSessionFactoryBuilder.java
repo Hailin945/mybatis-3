@@ -15,20 +15,25 @@
  */
 package org.apache.ibatis.session;
 
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.Reader;
-import java.util.Properties;
-
 import org.apache.ibatis.builder.xml.XMLConfigBuilder;
 import org.apache.ibatis.exceptions.ExceptionFactory;
 import org.apache.ibatis.executor.ErrorContext;
 import org.apache.ibatis.session.defaults.DefaultSqlSessionFactory;
 
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.Reader;
+import java.util.Properties;
+
 /**
  * Builds {@link SqlSession} instances.
  *
  * @author Clinton Begin
+ *
+ * mybatis框架的入口，用于创建SqlSessionFactory接口。
+ *     这个类可以被实例化、使用和丢弃，一旦创建了 SqlSessionFactory，就不再需要它了。因此 SqlSessionFactoryBuilder实例的最佳作用域是方法
+ * 作用域（也就是局部方法变量）。你可以重用 SqlSessionFactoryBuilder 来创建多个 SqlSessionFactory 实例，但是最好还是不要让其一直存在，以保
+ * 证所有的 XML 解析资源可以被释放给更重要的事情。
  */
 public class SqlSessionFactoryBuilder {
 
@@ -72,10 +77,22 @@ public class SqlSessionFactoryBuilder {
     return build(inputStream, null, properties);
   }
 
+  /**
+   * 创建SqlSessionFactory对象
+   *
+   * @param inputStream mybatis核心配置文件（mybatis-config.xml）输入流
+   * @param environment
+   * @param properties
+   * @return SqlSessionFactory对象
+   */
   public SqlSessionFactory build(InputStream inputStream, String environment, Properties properties) {
     try {
+      // 1、创建mybatis核心配置文件的专用解析器。
       XMLConfigBuilder parser = new XMLConfigBuilder(inputStream, environment, properties);
-      return build(parser.parse());
+      // 2、解析mybatis核心配置文件，封装全局配置文件对象（Configuration）。
+      Configuration config = parser.parse();
+      // 3、创建SqlSessionFactory对象。
+      return build(config);
     } catch (Exception e) {
       throw ExceptionFactory.wrapException("Error building SqlSession.", e);
     } finally {
