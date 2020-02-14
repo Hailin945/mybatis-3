@@ -15,11 +15,6 @@
  */
 package org.apache.ibatis.builder.xml;
 
-import java.io.InputStream;
-import java.io.Reader;
-import java.util.Properties;
-import javax.sql.DataSource;
-
 import org.apache.ibatis.builder.BaseBuilder;
 import org.apache.ibatis.builder.BuilderException;
 import org.apache.ibatis.datasource.DataSourceFactory;
@@ -38,18 +33,21 @@ import org.apache.ibatis.reflection.MetaClass;
 import org.apache.ibatis.reflection.ReflectorFactory;
 import org.apache.ibatis.reflection.factory.ObjectFactory;
 import org.apache.ibatis.reflection.wrapper.ObjectWrapperFactory;
-import org.apache.ibatis.session.AutoMappingBehavior;
-import org.apache.ibatis.session.AutoMappingUnknownColumnBehavior;
-import org.apache.ibatis.session.Configuration;
-import org.apache.ibatis.session.ExecutorType;
-import org.apache.ibatis.session.LocalCacheScope;
+import org.apache.ibatis.session.*;
 import org.apache.ibatis.transaction.TransactionFactory;
 import org.apache.ibatis.type.JdbcType;
 import org.apache.ibatis.type.TypeHandler;
 
+import javax.sql.DataSource;
+import java.io.InputStream;
+import java.io.Reader;
+import java.util.Properties;
+
 /**
  * @author Clinton Begin
  * @author Kazuki Shimizu
+ *
+ * 专门用来解析全局配置文件（mybatis-config）的解析器。使用建造者模式，将建造逻辑放到构造方法中，让执行建造的对象和需要建造的对象合二为一。
  */
 public class XMLConfigBuilder extends BaseBuilder {
 
@@ -79,10 +77,15 @@ public class XMLConfigBuilder extends BaseBuilder {
   }
 
   public XMLConfigBuilder(InputStream inputStream, String environment, Properties props) {
+    // 1、创建XPath语法解析器，并绑定到当前的XMLConfigBuilder：new XPathParser(inputStream, true, props, new XMLMapperEntityResolver())
+    // 创建mybatis核心配置文件解析器
+    // 知识点：构造方法中调用构造方法，必须在构造方法体的第一行（1、防止未创建对象已经发生调用的情况发生；2、防止创建多个对象的情况发生）
     this(new XPathParser(inputStream, true, props, new XMLMapperEntityResolver()), environment, props);
   }
 
   private XMLConfigBuilder(XPathParser parser, String environment, Properties props) {
+    // 2、创建Configuration对象，并绑定到当前的XMLConfigBuilder。同时通过TypeAliasRegistry注册一些Mybatis内部相关类的别名
+    // 知识点：抽象类不能实例化，但其方法可以在子类中使用（包括构造方法）。
     super(new Configuration());
     ErrorContext.instance().resource("SQL Mapper Configuration");
     this.configuration.setVariables(props);
@@ -91,23 +94,40 @@ public class XMLConfigBuilder extends BaseBuilder {
     this.parser = parser;
   }
 
+  /**
+   * 使用XPATH语法解析XML配置文件，将配置文件封装成Configuration对象
+   * @return 全局配置文件对象
+   */
   public Configuration parse() {
     if (parsed) {
       throw new BuilderException("Each XMLConfigBuilder can only be used once.");
     }
     parsed = true;
-    parseConfiguration(parser.evalNode("/configuration"));
+    // 通过XPATH解析器，解析configuration根节点
+    XNode xNode = parser.evalNode("/configuration");
+    // 从configuration根节点开始解析，最终将解析出的内容封装到Configuration对象中
+    parseConfiguration(xNode);
     return configuration;
   }
 
+  /**
+   * 从根节点开始解析，最终将解析出的内容封装到Configuration对象中
+   *
+   * @param root 根节点
+   */
   private void parseConfiguration(XNode root) {
     try {
       //issue #117 read properties first
+      // 解析</properties>标签
       propertiesElement(root.evalNode("properties"));
+      // 解析</settings>标签
       Properties settings = settingsAsProperties(root.evalNode("settings"));
       loadCustomVfs(settings);
+      // 解析</typeAliases>标签
       typeAliasesElement(root.evalNode("typeAliases"));
+      // 解析</plugins>标签
       pluginElement(root.evalNode("plugins"));
+      // 解析</objectFactory>标签
       objectFactoryElement(root.evalNode("objectFactory"));
       objectWrapperFactoryElement(root.evalNode("objectWrapperFactory"));
       reflectorFactoryElement(root.evalNode("reflectorFactory"));
@@ -215,12 +235,16 @@ public class XMLConfigBuilder extends BaseBuilder {
 
   private void propertiesElement(XNode context) throws Exception {
     if (context != null) {
+      // 获取所有子标签的内容
       Properties defaults = context.getChildrenAsProperties();
+      // 获取<properties>标签中的resource属性的值
       String resource = context.getStringAttribute("resource");
+      // 获取<properties>标签中的url属性的值
       String url = context.getStringAttribute("url");
       if (resource != null && url != null) {
         throw new BuilderException("The properties element cannot specify both a URL and a resource based property file reference.  Please specify one or the other.");
       }
+      // 加载resource和url的值对应的资源信息，并合并到defaults中
       if (resource != null) {
         defaults.putAll(Resources.getResourceAsProperties(resource));
       } else if (url != null) {
@@ -356,6 +380,12 @@ public class XMLConfigBuilder extends BaseBuilder {
     }
   }
 
+  /**
+   * 解析mappers标签，加载配置文件
+   *
+   * @param parent <mappers>标签对应的XNode对象
+   * @throws Exception 异常信息
+   */
   private void mapperElement(XNode parent) throws Exception {
     if (parent != null) {
       for (XNode child : parent.getChildren()) {
